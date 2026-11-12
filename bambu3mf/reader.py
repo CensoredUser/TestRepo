@@ -28,7 +28,9 @@ _REGENERATED = re.compile(
     r"^(\[Content_Types\]\.xml|_rels/\.rels|3D/.*|Metadata/(project_settings\.config|model_settings\.config|"
     r"layer_config_ranges\.xml|slice_info\.config|cut_information\.xml|_rels/.*|"
     r"(plate|plate_no_light|top|pick)_\d+(_small)?\.(png|json)|plate_\d+\.gcode(\.md5)?|"
-    r"plate_\d+\.json|print_profile\.config))$", re.I)
+    r"plate_\d+\.json|print_profile\.config|(process|filament|machine)_settings_\d+\.config))$", re.I)
+_EMBEDDED_RE = re.compile(r"^Metadata/(process|filament|machine)_settings_(\d+)\.config$", re.I)
+_EMBEDDED_ID = {"process": "print_settings_id", "filament": "filament_settings_id", "machine": "printer_settings_id"}
 
 
 class _MeshObj:
@@ -283,9 +285,23 @@ def read_project(path) -> Project:
     while len(project.plates) < max([1] + [i.plate + 1 for o in project.objects for i in o.instances if i.plate is not None]):
         project.plates.append(Plate())
 
+    embedded = []
     for name in ar.names:
-        if not _REGENERATED.match(name):
+        m = _EMBEDDED_RE.match(name)
+        if m:
+            try:
+                cfg = json.loads(ar.zip.read(ar.names[name]).decode("utf-8"))
+            except ValueError:
+                project.warnings.append(f"{name}: not valid JSON, dropped")
+                continue
+            kind = m.group(1).lower()
+            pid = cfg.get(_EMBEDDED_ID[kind])
+            pname = (pid[0] if isinstance(pid, list) and pid else pid) or cfg.get("name", "")
+            embedded.append((kind, int(m.group(2)), {"type": kind, "name": pname, "config": cfg}))
+        elif not _REGENERATED.match(name):
             project.extra_files[name] = ar.zip.read(ar.names[name])
+    order = {"process": 0, "filament": 1, "machine": 2}
+    project.embedded_presets = [e for _, _, e in sorted(embedded, key=lambda t: (order[t[0]], t[1]))]
     return project
 
 

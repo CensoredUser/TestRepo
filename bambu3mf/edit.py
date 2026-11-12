@@ -26,8 +26,10 @@ _MACHINE_HINTS = ("machine_", "printable_", "nozzle_diameter", "retraction_", "r
 
 
 class ProjectConfigEditor:
-    def __init__(self, config: Dict[str, Any], schema: Optional[Schema] = None):
+    def __init__(self, config: Dict[str, Any], schema: Optional[Schema] = None,
+                 embedded: Optional[List[Dict[str, Any]]] = None):
         self.config = config
+        self.embedded = embedded if embedded is not None else []
         self.schema = schema or Schema.empty()
         ids = config.get("filament_settings_id") or config.get("filament_colour") or [""]
         self.n = len(ids)
@@ -89,6 +91,7 @@ class ProjectConfigEditor:
             if key != "filament_colour":
                 for f in ([filament] if filament is not None else range(self.n)):
                     self.diffs[f + 1].add(key)
+                self._sync_embedded(key, "filament", filament)
             else:
                 self.refresh_flush_matrix()
             return
@@ -103,6 +106,8 @@ class ProjectConfigEditor:
         elif sec == "filament":
             for f in range(self.n):
                 self.diffs[f + 1].add(key)
+        if sec in ("process", "filament"):
+            self._sync_embedded(key, sec, None)
 
     def _apply(self, key: str, value, opt) -> None:
         problems = validate_value(key, value, opt)
@@ -110,6 +115,70 @@ class ProjectConfigEditor:
             raise SettingsError("; ".join(problems))
         self.config[key] = value
         self.changed.append(key)
+
+    # -- embedded presets -------------------------------------------------------
+    def find_embedded(self, name: str, kind: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        for p in self.embedded:
+            if p["name"] == name and (kind is None or p["type"] == kind):
+                return p
+        return None
+
+    def _sync_embedded(self, key: str, sec: str, filament: Optional[int]) -> None:
+        """Keep the active embedded presets equal to the project values, so Bambu
+        Studio opens them unmodified."""
+        if sec == "process":
+            p = self.find_embedded(str(self.config.get("print_settings_id", "")), "process")
+            if p:
+                p["config"][key] = self.config[key]
+        elif sec == "filament":
+            ids = self.config.get("filament_settings_id") or []
+            value = self.config[key]
+            for f in ([filament] if filament is not None else range(self.n)):
+                p = self.find_embedded(ids[f], "filament") if f < len(ids) else None
+                if not p:
+                    continue
+                if isinstance(value, list):
+                    p["config"][key] = [value[i] for i in self._filament_positions(value, f)]
+                else:
+                    p["config"][key] = value
+
+    def set_in_preset(self, name: str, key: str, value: Any) -> str:
+        """Change a key in an embedded preset (e.g. an inactive material variant).
+        If the preset is currently active, the project values change too."""
+        sec = self.section_of(key)
+        if sec not in ("process", "filament"):
+            raise SettingsError(f"'{key}' is a {sec} setting; embedded variants hold process and filament settings")
+        p = self.find_embedded(name, sec)
+        if p is None:
+            names = [f"{e['name']} ({e['type']})" for e in self.embedded]
+            raise SettingsError(f"no embedded {sec} preset named '{name}'; embedded presets: {names}")
+        opt = self.schema.get(key) if self.schema else None
+        cur = p["config"].get(key)
+        if cur is None:
+            proj = self.config.get(key)
+            if sec == "filament" and isinstance(proj, list):
+                ids = self.config.get("filament_settings_id") or []
+                f = ids.index(name) if name in ids else 0
+                cur = [proj[i] for i in self._filament_positions(proj, f)]
+            else:
+                cur = proj
+        new = to_bs_value(key, value, cur, opt)
+        problems = validate_value(key, new, opt)
+        if problems:
+            raise SettingsError("; ".join(problems))
+        p["config"][key] = new
+        active = (sec == "process" and self.config.get("print_settings_id") == name) or \
+                 (sec == "filament" and name in (self.config.get("filament_settings_id") or []))
+        if active:
+            if sec == "process":
+                self.set(key, value)
+            else:
+                for f, fid in enumerate(self.config.get("filament_settings_id") or []):
+                    if fid == name:
+                        self.set(key, value, filament=f)
+        else:
+            self.changed.append(f"{name}:{key}")
+        return "active" if active else "inactive"
 
     def refresh_flush_matrix(self) -> None:
         cols = self.config.get("filament_colour") or []

@@ -12,6 +12,8 @@ the production extension and split-model output it uses by default:
     Metadata/project_settings.config  full flattened config (JSON)
     Metadata/model_settings.config    objects/parts/plates (XML)
     Metadata/layer_config_ranges.xml  height-range modifiers (optional)
+    Metadata/process_settings_<n>.config, filament_settings_<n>.config,
+    machine_settings_<n>.config       project-embedded presets (optional)
     Metadata/slice_info.config        client header
     Metadata/plate_<n>.png / plate_<n>_small.png
 """
@@ -38,6 +40,8 @@ COMPONENT_UUID_SUFFIX = "-b206-40ff-9872-83e8017abed1"
 BUILD_UUID = "2c7c17d8-22b5-4d84-8835-1976022ea369"
 BUILD_UUID_SUFFIX = "-b1ec-4553-aec9-835e5b724bb4"
 MODEL_REL = "http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"
+# bbs_3mf.hpp EMBEDDED_PRINT/FILAMENT/PRINTER_FILE_FORMAT
+EMBEDDED_FILE = {"process": "process_settings", "filament": "filament_settings", "machine": "machine_settings"}
 
 
 def xml_escape(s: str) -> str:
@@ -353,6 +357,12 @@ def write_3mf(project: Project, path, thumbnails: bool = True) -> Path:
         for d in datas:
             files.append((d.sub_path, _object_model(d).encode(), D))
     files.append(("Metadata/project_settings.config", project_settings_json(project.config).encode(), D))
+    counters = {"process": 0, "filament": 0, "machine": 0}
+    for preset in project.embedded_presets:
+        kind = preset["type"]
+        counters[kind] += 1
+        files.append((f"Metadata/{EMBEDDED_FILE[kind]}_{counters[kind]}.config",
+                      project_settings_json(preset["config"]).encode(), D))
     files.append(("Metadata/model_settings.config", _model_settings(project, datas, thumbnails).encode(), D))
     ranges = _layer_config_ranges(project)
     if ranges:

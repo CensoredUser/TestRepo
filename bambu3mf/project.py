@@ -156,6 +156,8 @@ class Project:
         self.plates: List[Plate] = [Plate()]
         self.metadata = Metadata()
         self.extra_files: Dict[str, bytes] = {}  # passthrough files when editing an existing 3MF
+        # project-embedded presets: [{"type": "process"|"filament"|"machine", "name": str, "config": dict}]
+        self.embedded_presets: List[Dict[str, Any]] = []
         self.app_version: str = str(config.get("version", "02.00.00.00"))
         self.warnings: List[str] = []
 

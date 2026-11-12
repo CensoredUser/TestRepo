@@ -194,6 +194,10 @@ def cmd_build(args) -> int:
                            "copies": len(o.instances), "size_mm": [round(v, 2) for v in o.footprint()]}
                           for o in project.objects]
     summary["plates"] = len(project.plates)
+    summary["embedded_presets"] = [f"{p['name']} ({p['type']}, inherits {p['config']['inherits']})"
+                                   for p in project.embedded_presets]
+    if getattr(builder, "variants", None):
+        summary["variants"] = builder.variants
     summary["warnings"] = summary["warnings"] + project.warnings
     if args.dry_run:
         _print(summary, True)
@@ -237,6 +241,17 @@ def _project_overview(proj, cfg: dict, settings: bool) -> dict:
                      "height_ranges": [{"min_z": r.min_z, "max_z": r.max_z, "settings": r.settings}
                                        for r in o.layer_ranges]}
                     for o in proj.objects],
+        "embedded_presets": [{"name": p["name"], "type": p["type"], "inherits": p["config"].get("inherits"),
+                              "active": p["name"] == cfg.get("print_settings_id") if p["type"] == "process"
+                              else p["name"] in (cfg.get("filament_settings_id") or []),
+                              "settings": {k: v for k, v in p["config"].items()
+                                           if k not in ("from", "name", "version", "inherits", "print_settings_id",
+                                                        "filament_settings_id", "printer_settings_id",
+                                                        "print_extruder_id", "print_extruder_variant",
+                                                        "filament_extruder_variant", "printer_extruder_id",
+                                                        "printer_extruder_variant")}
+                              if settings else None}
+                             for p in proj.embedded_presets],
         "extra_files": sorted(proj.extra_files),
         "warnings": proj.warnings,
     }
@@ -262,9 +277,20 @@ def cmd_edit(args) -> int:
     lib = _lib(args, required=False)
     proj = read_project(args.file)
     schema = lib.schema if lib else None
-    ed = ProjectConfigEditor(proj.config, schema)
+    ed = ProjectConfigEditor(proj.config, schema, proj.embedded_presets)
     sets = _parse_sets(args.set)
-    if args.object:
+    if args.all_variants:
+        for k, v in sets:
+            sec = ed.section_of(k)
+            targets = [p["name"] for p in proj.embedded_presets if p["type"] == sec]
+            if not targets:
+                raise SettingsError(f"no embedded {sec} presets to apply '{k}' to")
+            for name in targets:
+                ed.set_in_preset(name, k, v)
+    elif args.preset:
+        for k, v in sets:
+            ed.set_in_preset(args.preset, k, v)
+    elif args.object:
         targets = [o for o in proj.objects if o.name == args.object]
         if not targets:
             raise SettingsError(f"no object named '{args.object}'; objects: {[o.name for o in proj.objects]}")
@@ -295,6 +321,7 @@ def cmd_edit(args) -> int:
     write_3mf(proj, out, thumbnails=not args.no_thumbnails)
     rep = validate(out, lib)
     _print({"output": str(out), "changed": ed.changed if not args.object else [k for k, _ in sets],
+            "embedded_presets": [p["name"] + " (" + p["type"] + ")" for p in proj.embedded_presets],
             "different_settings_to_system": proj.config.get("different_settings_to_system"),
             "validation": rep.as_dict()}, True)
     return 0 if rep.ok else 2
@@ -332,6 +359,30 @@ def cmd_export_preset(args) -> int:
             "changed": [k for k in preset if k not in ("from", "inherits", "is_custom_defined", "name", "version",
                                                         "print_settings_id", "filament_settings_id",
                                                         "printer_settings_id", "filament_id")]}, True)
+    return 0
+
+
+def cmd_extract_presets(args) -> int:
+    """Save a project's embedded presets as user presets (File > Import > Import Configs)."""
+    from .reader import read_project
+    import re as _re
+    proj = read_project(args.file)
+    if not proj.embedded_presets:
+        raise SettingsError("this project has no embedded presets")
+    out_dir = Path(args.output or ".")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written = []
+    for p in proj.embedded_presets:
+        if args.name and p["name"] not in args.name:
+            continue
+        cfg = dict(p["config"])
+        cfg["from"] = "User"
+        cfg.setdefault("is_custom_defined", "0")
+        safe = _re.sub(r'[<>:"/\\|?*]', "_", p["name"])
+        path = out_dir / f"{safe} ({p['type']}).json"
+        path.write_text(json.dumps(cfg, indent=4, ensure_ascii=False) + "\n", encoding="utf-8")
+        written.append(str(path))
+    _print({"written": written}, True)
     return 0
 
 
@@ -409,6 +460,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--set", action="append", metavar="KEY=VALUE", required=False)
     s.add_argument("--filament", type=int, help="1-based filament for per-filament settings")
     s.add_argument("--object", help="apply --set as per-object overrides to the object with this name")
+    s.add_argument("--preset", help="apply --set to this embedded preset (e.g. an inactive material variant)")
+    s.add_argument("--all-variants", action="store_true",
+                   help="apply --set to every embedded preset of the key's type (all material variants)")
     s.add_argument("--unset-object", action="append", metavar="KEY", help="remove a per-object override")
     s.add_argument("--no-thumbnails", action="store_true")
     s.set_defaults(func=cmd_edit)
@@ -428,6 +482,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--app-version")
     s.add_argument("-o", "--output")
     s.set_defaults(func=cmd_export_preset)
+
+    s = sub.add_parser("extract-presets", help="save a project's embedded presets as importable user presets")
+    s.add_argument("file")
+    s.add_argument("-o", "--output", help="output folder (default: current folder)")
+    s.add_argument("--name", action="append", help="only this preset name (repeatable)")
+    s.set_defaults(func=cmd_extract_presets)
 
     s = sub.add_parser("mesh", help="show size/triangle count of a mesh file")
     s.add_argument("file")

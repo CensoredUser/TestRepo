@@ -12,6 +12,13 @@ into a ready-to-slice project.
 * Writes the complete `project_settings.config`, plus the
   `different_settings_to_system` bookkeeping Bambu Studio uses to decide which
   values to keep. Leave a key off that list and Bambu Studio silently reverts it.
+* **Embeds the print's own named profile** in the 3MF (e.g. `Shelf bracket - PLA`):
+  a process preset and filament presets stored as project presets that inherit
+  from Bambu's system presets. They show up in Bambu Studio's dropdowns and are
+  selected when the project opens.
+* **Material variants**: one file can carry a tuned process + filament pair per
+  material (`- PLA`, `- PETG`, `- ASA`, …). Switch both dropdowns to the other
+  variant in Bambu Studio and the print is retuned for that material.
 * Supports per-object settings, modifiers (incl. negative parts and support
   enforcers/blockers), height-range modifiers, multiple filaments/AMS slots,
   multiple plates, per-plate print sequence and bed type, copies, auto-arrange,
@@ -55,6 +62,28 @@ bambu3mf export-preset --type process --printer P1S --base "0.20mm Standard" \
 bambu3mf validate cube.3mf
 ```
 
+Material variants (see `examples/bracket_material_variants.json`):
+
+```json
+{
+  "printer": "X1C",
+  "profile": "Shelf bracket",
+  "settings": {"wall_loops": 4, "sparse_infill_density": "35%"},
+  "variants": [
+    {"name": "PLA",  "filament": "Bambu PLA Basic"},
+    {"name": "PETG", "filament": "Bambu PETG HF", "filament_settings": {"fan_max_speed": 50}},
+    {"name": "ASA",  "filament": "ASA", "settings": {"brim_type": "outer_only"}}
+  ],
+  "objects": [{"name": "bracket", "mesh": "bracket.stl"}]
+}
+```
+
+```bash
+bambu3mf edit bracket.3mf --preset "Shelf bracket - PETG" --set nozzle_temperature=245   # tune one variant
+bambu3mf edit bracket.3mf --all-variants --set wall_loops=5                              # tune every variant
+bambu3mf extract-presets bracket.3mf -o presets/                                         # keep the variants as user presets
+```
+
 A spec looks like this (full reference: [docs/SPEC.md](docs/SPEC.md)):
 
 ```json
@@ -78,9 +107,13 @@ write_3mf(project, "out.3mf")
 
 ## Opening the result
 
-Open the `.3mf` in Bambu Studio (File > Open Project). It shows the system
-presets (e.g. `0.20mm Standard @BBL X1C`) marked as modified, with your
-changes highlighted in the parameter tabs, ready to slice and send. If Bambu
+Open the `.3mf` in Bambu Studio (File > Open Project). The process and
+filament dropdowns show the project's own presets (e.g. `Shelf bracket - PLA`),
+derived from the Bambu system presets; the parameter tabs show what differs
+from the system preset. To print another variant, select `Shelf bracket - PETG`
+in the filament slot **and** in the process dropdown. Bambu Studio doesn't
+switch the process automatically. To keep a variant for other prints, save it
+as a user preset in Bambu Studio, or use `bambu3mf export-preset`. If Bambu
 Studio shows a "newer version" dialog, build with
 `"app_version": "<your version>"` or fetch the profiles for your version.
 

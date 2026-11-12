@@ -27,7 +27,10 @@ from .settings import SettingsBuilder, SettingsError, to_bs_value, validate_valu
 
 _TOP_KEYS = {"printer", "nozzle", "process", "filaments", "bed_type", "settings", "process_settings",
              "machine_settings", "filament_settings", "project_settings", "app_version", "preset_files",
-             "metadata", "arrange", "plates", "objects", "$schema", "comment", "notes"}
+             "metadata", "arrange", "plates", "objects", "profile", "variants", "active_variant",
+             "$schema", "comment", "notes"}
+_VARIANT_KEYS = {"name", "filament", "color", "colour", "slot", "process", "settings", "process_settings",
+                 "filament_settings", "comment"}
 _OBJ_KEYS = {"name", "mesh", "rotate", "scale", "position", "copies", "instances", "filament", "settings",
              "parts", "modifiers", "height_ranges", "plate", "printable", "comment"}
 _PART_KEYS = {"name", "mesh", "type", "offset", "rotate", "scale", "settings", "filament", "comment"}
@@ -103,11 +106,14 @@ def _filament_index(value: Any, n: int, where: str) -> int:
     return i
 
 
-def build_settings(spec: dict, lib: ProfileLibrary, base_dir: Path = Path(".")) -> SettingsBuilder:
+def build_settings(spec: dict, lib: ProfileLibrary, base_dir: Path = Path("."),
+                   variant: Optional[dict] = None) -> SettingsBuilder:
+    """Resolve presets and apply overrides. *variant* (an entry of ``variants``)
+    replaces one filament slot and adds its own process/filament overrides."""
     for pf in spec.get("preset_files", []) or []:
         p = Path(pf)
         lib.add_preset_file(p if p.is_absolute() else base_dir / p)
-    fil_specs = spec.get("filaments") or [None]
+    fil_specs = list(spec.get("filaments") or [None])
     fil_names, fil_entries = [], []
     for i, f in enumerate(fil_specs):
         if f is None or isinstance(f, str):
@@ -119,10 +125,21 @@ def build_settings(spec: dict, lib: ProfileLibrary, base_dir: Path = Path(".")) 
             fil_entries.append(f)
         else:
             raise SpecError(f"filaments[{i}] must be a preset name or an object")
+    slot = None
+    if variant is not None:
+        slot = int(variant.get("slot", 1)) - 1
+        if not 0 <= slot <= len(fil_names):
+            raise SpecError(f"variant '{variant.get('name')}': slot {slot + 1} does not exist")
+        if slot == len(fil_names):
+            fil_names.append(None)
+            fil_entries.append({})
+        fil_names[slot] = variant.get("filament")
+        # the variant replaces the slot's material: keep only its colour
+        fil_entries[slot] = {k: v for k, v in fil_entries[slot].items() if k in ("color", "colour")}
     if "printer" not in spec:
         raise SpecError("spec needs a 'printer' (e.g. \"X1C\", \"P1S\", \"A1 mini\")")
-    b = SettingsBuilder(lib, spec["printer"], spec.get("nozzle", 0.4), spec.get("process"),
-                        fil_names, spec.get("app_version"))
+    process = (variant or {}).get("process") or spec.get("process")
+    b = SettingsBuilder(lib, spec["printer"], spec.get("nozzle", 0.4), process, fil_names, spec.get("app_version"))
     try:
         for i, f in enumerate(fil_entries):
             col = f.get("color") or f.get("colour")
@@ -137,9 +154,124 @@ def build_settings(spec: dict, lib: ProfileLibrary, base_dir: Path = Path(".")) 
         b.update(spec.get("project_settings"), section="project")
         for i, f in enumerate(fil_entries):
             b.update(f.get("settings"), section="filament", filament=i)
+        if variant is not None:
+            col = variant.get("color") or variant.get("colour")
+            if col:
+                b.set("filament_colour", col, filament=slot)
+            for k, v in (variant.get("settings") or {}).items():
+                sec = b.section_of(k)
+                b.set(k, v, filament=slot if sec == "filament" else None)
+            b.update(variant.get("process_settings"), section="process")
+            b.update(variant.get("filament_settings"), section="filament", filament=slot)
     except SettingsError as e:
-        raise SpecError(str(e)) from None
+        where = f"variant '{variant.get('name')}': " if variant else ""
+        raise SpecError(where + str(e)) from None
     return b
+
+
+def _base_name(preset: str) -> str:
+    return preset.split(" @")[0].strip()
+
+
+def _profile_name(spec: dict) -> str:
+    prof = spec.get("profile")
+    if isinstance(prof, str):
+        return prof
+    if isinstance(prof, dict) and prof.get("name"):
+        return str(prof["name"])
+    title = (spec.get("metadata") or {}).get("title")
+    if title:
+        return str(title)
+    objs = spec.get("objects") or [o for pl in spec.get("plates") or [] for o in pl.get("objects", [])]
+    for o in objs:
+        if o.get("name"):
+            return str(o["name"])
+        if isinstance(o.get("mesh"), str):
+            return Path(o["mesh"]).stem
+    return "bambu3mf"
+
+
+def _embed_enabled(spec: dict) -> bool:
+    prof = spec.get("profile")
+    return not (isinstance(prof, dict) and prof.get("embed") is False) and prof is not False
+
+
+def build_profiles(spec: dict, lib: ProfileLibrary, base_dir: Path = Path(".")):
+    """Return (active builder, embedded presets, variant summary).
+
+    Every build embeds its own named presets ("<profile> - <material>") unless
+    ``"profile": {"embed": false}``. With ``variants`` one process + filament
+    preset pair is embedded per variant; the active one is selected.
+    """
+    if isinstance(spec.get("profile"), dict):
+        _check_keys(spec["profile"], {"name", "embed", "comment"}, "profile")
+    variants = spec.get("variants") or []
+    embed = _embed_enabled(spec)
+    if variants and not embed:
+        raise SpecError("'variants' are stored as embedded presets; they need profile.embed to stay enabled")
+    pname = _profile_name(spec)
+
+    def filament_names(b: SettingsBuilder, slot: Optional[int], vname: Optional[str]) -> List[str]:
+        names = []
+        for i, f in enumerate(b.filaments):
+            n = f"{pname} - {vname}" if i == slot else f"{pname} - {_base_name(f)}"
+            if n in names:
+                n = f"{n} #{i + 1}"
+            names.append(n)
+        return names
+
+    if not variants:
+        b = build_settings(spec, lib, base_dir)
+        if embed:
+            b.name_presets(process=pname, filaments=filament_names(b, None, None))
+        return b, (b.embedded_presets() if embed else []), []
+
+    builders = []
+    seen_names = set()
+    for vi, v in enumerate(variants):
+        if not isinstance(v, dict) or "filament" not in v:
+            raise SpecError(f"variants[{vi}] needs at least a 'filament' (preset name or material like \"PETG\")")
+        _check_keys(v, _VARIANT_KEYS, f"variants[{vi}]")
+        b = build_settings(spec, lib, base_dir, v)
+        slot = int(v.get("slot", 1)) - 1
+        ftype = b.cfg["filament"][slot].get("filament_type")
+        ftype = ftype[0] if isinstance(ftype, list) and ftype else ftype
+        vname = str(v.get("name") or ftype or _base_name(b.filaments[slot]))
+        if vname in seen_names:
+            raise SpecError(f"variant name '{vname}' is used twice; give each variant a unique 'name'")
+        seen_names.add(vname)
+        b.name_presets(process=f"{pname} - {vname}", filaments=filament_names(b, slot, vname))
+        builders.append((vname, slot, b))
+    active = spec.get("active_variant") or builders[0][0]
+    act = [x for x in builders if x[0] == active]
+    if not act:
+        raise SpecError(f"active_variant '{active}' is not one of {[x[0] for x in builders]}")
+    active_builder = act[0][2]
+    presets: List[Dict[str, Any]] = []
+    index: Dict[Tuple[str, str], Dict[str, Any]] = {}
+
+    def add(p):
+        key = (p["type"], p["name"])
+        if key in index:
+            if index[key]["config"] != p["config"]:
+                raise SpecError(f"two variants produce different {p['type']} presets named '{p['name']}'")
+            return
+        index[key] = p
+        presets.append(p)
+
+    for p in active_builder.embedded_presets():
+        add(p)
+    summary = []
+    for vname, slot, b in builders:
+        for p in b.embedded_presets():
+            if p["type"] == "process" or p["name"] == b.filament_names[slot]:
+                add(p)
+        summary.append({"variant": vname, "active": b is active_builder, "process": b.process_name,
+                        "process_base": b.process, "filament": b.filament_names[slot],
+                        "filament_base": b.filaments[slot], "changed": b.summary()["changed"]})
+    order = {"process": 0, "filament": 1, "machine": 2}
+    presets.sort(key=lambda p: order[p["type"]])
+    return active_builder, presets, summary
 
 
 def _build_object(o: dict, builder: SettingsBuilder, base_dir: Path, where: str, default_plate: int) -> ModelObject:
@@ -206,10 +338,12 @@ def _build_object(o: dict, builder: SettingsBuilder, base_dir: Path, where: str,
 
 def build_project(spec: dict, lib: ProfileLibrary, base_dir: Path = Path(".")) -> Tuple[Project, SettingsBuilder]:
     _check_keys(spec, _TOP_KEYS, "spec")
-    builder = build_settings(spec, lib, base_dir)
+    builder, embedded, variants = build_profiles(spec, lib, base_dir)
     config = builder.build()
     project = Project(config, Bed.from_config(config))
     project.app_version = builder.app_version
+    project.embedded_presets = embedded
+    builder.variants = variants
     md = spec.get("metadata") or {}
     project.metadata = Metadata(**{k: str(v) for k, v in md.items() if k in Metadata.__dataclass_fields__})
     plates = spec.get("plates")

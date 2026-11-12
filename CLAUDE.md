@@ -23,10 +23,19 @@ user is Claude, preparing optimised prints for the owner's printer.
 5. The build output includes validation; it must say `"ok": true`. Fix any
    errors and read the warnings (off-bed objects, too tall, etc.).
 6. Tell the user what you changed and why (the build summary lists every
-   changed key per preset).
+   changed key per preset and per variant).
 
-For an existing project: `inspect` → `edit --set …` (process/printer/filament)
-or `edit --object NAME --set …` (per object) → `validate`.
+Every build embeds the print's own named profile (`"profile": "<name>"`).
+Unless the user wants a single material, add `variants` for the materials the
+print could reasonably be made in (usually PLA + PETG, plus ASA/ABS for
+outdoor or heat use if the printer supports them). Shared tuning goes in the
+top-level `settings`, material-specific tuning in each variant (see the
+"Material variants" table in `docs/TUNING.md`).
+
+For an existing project: `inspect` → `edit --set …` (active profile;
+process/printer/filament), `edit --preset "<name>" --set …` (one embedded
+variant), `edit --all-variants --set …` (every variant) or
+`edit --object NAME --set …` (per object) → `validate`.
 
 ## Rules
 - Never hand-edit `project_settings.config` inside a 3MF; use `edit` or a spec.

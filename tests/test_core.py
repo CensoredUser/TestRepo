@@ -265,6 +265,95 @@ class WriterReaderTests(unittest.TestCase):
         self.assertEqual(cfg["nozzle_temperature"][:2], ["210", "215"])
 
 
+class EmbeddedPresetTests(unittest.TestCase):
+    def variant_spec(self):
+        return basic_spec(profile="Widget", settings={"wall_loops": 4}, variants=[
+            {"name": "PLA", "filament": "Test PLA", "color": "#FF0000"},
+            {"name": "PETG", "filament": "Test PETG", "process_settings": {"seam_position": "back"},
+             "filament_settings": {"nozzle_temperature": 250}}])
+
+    def test_single_build_embeds_named_presets(self):
+        project, builder = build_project(basic_spec(profile="Cube", settings={"wall_loops": 3}), lib())
+        cfg = project.config
+        self.assertEqual(cfg["print_settings_id"], "Cube")
+        self.assertEqual(cfg["filament_settings_id"], ["Cube - Test PLA"])
+        self.assertEqual(cfg["inherits_group"], ["0.20mm Standard @Test", "Test PLA @Test", ""])
+        proc = [p for p in project.embedded_presets if p["type"] == "process"][0]["config"]
+        self.assertEqual(proc["inherits"], "0.20mm Standard @Test")
+        self.assertEqual(proc["print_settings_id"], "Cube")
+        self.assertEqual(proc["wall_loops"], "3")
+        self.assertEqual(proc["print_extruder_variant"], ["Direct Drive Standard", "Direct Drive High Flow"])
+        self.assertEqual(proc["from"], "project")
+        fil = [p for p in project.embedded_presets if p["type"] == "filament"][0]["config"]
+        self.assertEqual(fil["filament_settings_id"], ["Cube - Test PLA"])
+        self.assertNotIn("nozzle_temperature", fil)       # unchanged keys are not stored
+
+    def test_embed_can_be_disabled(self):
+        project, _ = build_project(basic_spec(profile={"embed": False}), lib())
+        self.assertEqual(project.embedded_presets, [])
+        self.assertEqual(project.config["print_settings_id"], "0.20mm Standard @Test")
+
+    def test_variants(self):
+        project, builder = build_project(self.variant_spec(), lib())
+        names = [(p["type"], p["name"]) for p in project.embedded_presets]
+        self.assertEqual(names, [("process", "Widget - PLA"), ("process", "Widget - PETG"),
+                                 ("filament", "Widget - PLA"), ("filament", "Widget - PETG")])
+        cfg = project.config
+        self.assertEqual(cfg["print_settings_id"], "Widget - PLA")       # first variant is active
+        self.assertEqual(cfg["filament_colour"], ["#FF0000"])
+        petg_proc = dict(project.embedded_presets[1]["config"])
+        self.assertEqual(petg_proc["wall_loops"], "4")                  # common settings in every variant
+        self.assertEqual(petg_proc["seam_position"], "back")
+        petg_fil = project.embedded_presets[3]["config"]
+        self.assertEqual(petg_fil["inherits"], "Test PETG @Test")
+        self.assertEqual(petg_fil["nozzle_temperature"], ["250", "250"])
+        spec = self.variant_spec()
+        spec["active_variant"] = "PETG"
+        project2, _ = build_project(spec, lib())
+        self.assertEqual(project2.config["print_settings_id"], "Widget - PETG")
+        self.assertEqual(project2.config["nozzle_temperature"], ["250", "250"])
+        with tempfile.TemporaryDirectory() as d:
+            out = write_3mf(project, Path(d) / "v.3mf")
+            names_in_zip = zipfile.ZipFile(out).namelist()
+            for n in ("Metadata/process_settings_1.config", "Metadata/process_settings_2.config",
+                      "Metadata/filament_settings_1.config", "Metadata/filament_settings_2.config"):
+                self.assertIn(n, names_in_zip)
+            rep = validate(out, lib())
+            self.assertTrue(rep.ok, rep.errors)
+            self.assertEqual(rep.warnings, [])
+            q = read_project(out)
+            self.assertEqual(q.embedded_presets, project.embedded_presets)
+
+    def test_variant_errors(self):
+        spec = self.variant_spec()
+        spec["variants"][1]["name"] = "PLA"
+        with self.assertRaises(SpecError):
+            build_project(spec, lib())
+        spec = self.variant_spec()
+        spec["active_variant"] = "ABS"
+        with self.assertRaises(SpecError):
+            build_project(spec, lib())
+        with self.assertRaises(SettingsError):
+            b = SettingsBuilder(lib(), "Test Printer")
+            b.name_presets(process="0.12mm Fine @Test")              # clashes with a real preset
+
+    def test_edit_variants(self):
+        project, _ = build_project(self.variant_spec(), lib())
+        ed = ProjectConfigEditor(project.config, lib().schema, project.embedded_presets)
+        ed.set("wall_loops", 5)                                       # active variant follows
+        self.assertEqual(ed.find_embedded("Widget - PLA", "process")["config"]["wall_loops"], "5")
+        self.assertEqual(ed.find_embedded("Widget - PETG", "process")["config"]["wall_loops"], "4")
+        self.assertEqual(ed.set_in_preset("Widget - PETG", "nozzle_temperature", 245), "inactive")
+        self.assertEqual(ed.find_embedded("Widget - PETG", "filament")["config"]["nozzle_temperature"],
+                         ["245", "245"])
+        self.assertEqual(project.config["nozzle_temperature"], ["210", "215"])   # active PLA untouched
+        ed.set("nozzle_temperature", 205, filament=0)
+        self.assertEqual(ed.find_embedded("Widget - PLA", "filament")["config"]["nozzle_temperature"],
+                         ["205", "205"])
+        with self.assertRaises(SettingsError):
+            ed.set_in_preset("Nope", "wall_loops", 3)
+
+
 class CliTests(unittest.TestCase):
     def run_cli(self, *args):
         buf = io.StringIO()
@@ -288,6 +377,27 @@ class CliTests(unittest.TestCase):
             self.assertIn("layer_height", json.loads(text)["different_settings_to_system"][0])
             code, text = self.run_cli("validate", str(out))
             self.assertEqual(code, 0, text)
+
+    def test_variants_extract_presets(self):
+        with tempfile.TemporaryDirectory() as d:
+            spec = Path(d) / "v.json"
+            spec.write_text(json.dumps(basic_spec(profile="W", variants=[
+                {"name": "PLA", "filament": "Test PLA"},
+                {"name": "PETG", "filament": "Test PETG", "filament_settings": {"nozzle_temperature": 250}}])))
+            out = Path(d) / "v.3mf"
+            code, text = self.run_cli("build", str(spec), "-o", str(out))
+            self.assertEqual(code, 0, text)
+            self.assertEqual([v["variant"] for v in json.loads(text)["variants"]], ["PLA", "PETG"])
+            code, text = self.run_cli("edit", str(out), "--preset", "W - PETG", "--set", "nozzle_temperature=245")
+            self.assertEqual(code, 0, text)
+            code, text = self.run_cli("extract-presets", str(out), "-o", str(Path(d) / "presets"))
+            self.assertEqual(code, 0, text)
+            files = json.loads(text)["written"]
+            self.assertEqual(len(files), 4)
+            petg = json.loads((Path(d) / "presets" / "W - PETG (filament).json").read_text())
+            self.assertEqual(petg["from"], "User")
+            self.assertEqual(petg["inherits"], "Test PETG @Test")
+            self.assertEqual(petg["nozzle_temperature"], ["245", "245"])
 
     def test_export_preset(self):
         with tempfile.TemporaryDirectory() as d:

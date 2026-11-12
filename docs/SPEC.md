@@ -15,6 +15,9 @@ are resolved against the spec file's folder.
 | `bed_type` | string | `"Cool Plate"`, `"Engineering Plate"`, `"High Temp Plate"`, `"Textured PEI Plate"`, `"Supertack Plate"`. Default: the printer model's default. |
 | `settings` | object | Overrides routed automatically to process / printer / filament (all filaments) / project. |
 | `process_settings`, `machine_settings`, `filament_settings`, `project_settings` | object | Same, forced into one section. |
+| `profile` | string or object | Name of the print's own profile, e.g. `"Shelf bracket"` (default: `metadata.title`, else the first object's name). Every build embeds named presets in the 3MF: process `"<profile>"` and one filament preset per slot `"<profile> - <filament>"`. `{"embed": false}` keeps the plain system presets. |
+| `variants` | list | Material variants: one embedded process + filament preset pair per material (see below). |
+| `active_variant` | string | Variant selected when the project opens (default: the first). |
 | `app_version` | string | Bambu Studio version written into the file. Default: the version the profiles belong to. Never claim a newer version than the user runs. |
 | `preset_files` | list | Extra user preset JSON files to load (then usable by name). |
 | `metadata` | object | `title`, `designer`, `description`, `copyright`, `license`, `origin`. |
@@ -31,6 +34,47 @@ are resolved against the spec file's folder.
   lists; `"inner_wall_speed": 200` sets both, `[200, 300]` sets each.
 * Values are validated against the option schema (type, enum, min/max).
   Use `bambu3mf search <words>` to find keys and allowed values.
+
+## Embedded profiles and material variants
+
+Each build writes its tuned presets *into* the 3MF as project presets
+(`Metadata/process_settings_N.config`, `filament_settings_N.config`). Each
+inherits from the Bambu system preset and stores only what changed. Bambu
+Studio lists them in the preset dropdowns and selects them when the project
+opens: the user sees `Shelf bracket - PLA`, not `0.20mm Standard @BBL X1C (modified)`.
+
+`variants` adds one pair per material:
+
+```json
+"profile": "Shelf bracket",
+"settings": {"wall_loops": 4, "sparse_infill_density": "35%"},
+"variants": [
+  {"name": "PLA",  "filament": "Bambu PLA Basic", "color": "#ECEFF1"},
+  {"name": "PETG", "filament": "Bambu PETG HF",
+   "process_settings": {"outer_wall_speed": 150},
+   "filament_settings": {"fan_max_speed": 50}},
+  {"name": "ASA",  "filament": "ASA", "settings": {"brim_type": "outer_only"}}
+]
+```
+
+| Variant field | Meaning |
+|---|---|
+| `name` | Variant label (default: the filament type). Presets are named `"<profile> - <name>"`, the same for process and filament, so the pair is easy to pick. |
+| `filament` | **Required.** Filament preset, or a bare material (`"PETG"`, `"ASA"`, `"PLA-CF"`), which resolves to Bambu's own filament for the printer, else Generic. |
+| `color` | Slot colour for this variant. |
+| `slot` | Filament slot the variant replaces (default 1). Other slots come from `filaments`. |
+| `process` | Different base process preset for this variant. |
+| `settings` | Auto-routed overrides; filament keys apply to the variant's slot only. |
+| `process_settings`, `filament_settings` | Forced into the variant's process / filament preset. |
+
+The top-level settings (`settings`, `process_settings`, …) go into every
+variant. Put geometry-driven tuning there (walls, infill, supports) and
+material-specific tuning in the variants. Top-level `filament_settings`
+also reach every variant's filament, so avoid material-specific values there.
+
+Switching material in Bambu Studio: pick `"<profile> - PETG"` in the filament
+slot **and** in the process dropdown. Bambu Studio doesn't change the process
+automatically when the filament changes.
 
 ## Objects
 

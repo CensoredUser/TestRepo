@@ -127,6 +127,9 @@ def validate(path, lib=None) -> Report:
                     if oid not in build_counts or not 0 <= iid < build_counts[oid]:
                         rep.errors.append(f"plate instance object {oid}/instance {iid} does not exist")
 
+    # project-embedded presets
+    _check_embedded(z, cfg, rep, lib)
+
     # higher-level checks through the reader
     try:
         proj = read_project(path)
@@ -231,3 +234,69 @@ def _check_object_keys(el, where: str, rep: Report, lib) -> None:
             elif schema.section_of(k) not in ("process", None):
                 rep.warnings.append(f"{where}: '{k}' is a {schema.section_of(k)} setting; Bambu Studio only "
                                     "applies print settings per object")
+
+
+_EMBED_ID = {"process": "print_settings_id", "filament": "filament_settings_id", "machine": "printer_settings_id"}
+
+
+def _check_embedded(z, cfg: dict, rep: Report, lib) -> None:
+    import re
+    embedded = {}
+    for name in z.namelist():
+        m = re.match(r"^Metadata/(process|filament|machine)_settings_(\d+)\.config$", name)
+        if not m:
+            continue
+        kind = m.group(1)
+        try:
+            pc = json.loads(z.read(name).decode("utf-8"))
+        except ValueError as e:
+            rep.errors.append(f"{name}: invalid JSON ({e})")
+            continue
+        pid = pc.get(_EMBED_ID[kind])
+        pname = pid[0] if isinstance(pid, list) and pid else pid
+        if not pname:
+            rep.errors.append(f"{name}: missing {_EMBED_ID[kind]} (Bambu Studio skips the preset)")
+            continue
+        if (kind, pname) in embedded:
+            rep.errors.append(f"{name}: duplicate embedded {kind} preset '{pname}'")
+        embedded[(kind, pname)] = pc
+        inh = pc.get("inherits")
+        if not inh:
+            rep.errors.append(f"{name}: '{pname}' has no 'inherits'; Bambu Studio only loads embedded presets "
+                              "that inherit an installed preset")
+        elif lib is not None:
+            if inh not in lib.presets:
+                rep.warnings.append(f"{name}: parent '{inh}' is not in this profile set")
+            elif lib.info(inh).type != kind:
+                rep.errors.append(f"{name}: parent '{inh}' is a {lib.info(inh).type} preset, not {kind}")
+            if pname in lib.presets:
+                rep.errors.append(f"{name}: '{pname}' clashes with an existing preset name; Bambu Studio "
+                                  "would not load the embedded one")
+    rep.info["embedded_presets"] = [f"{n} ({k})" for k, n in embedded]
+    if not cfg:
+        return
+    n = len(cfg.get("filament_settings_id") or [])
+    ig = cfg.get("inherits_group") or [""] * (n + 2)
+    active = [("process", 0, cfg.get("print_settings_id"))] + \
+             [("filament", i + 1, f) for i, f in enumerate(cfg.get("filament_settings_id") or [])]
+    self_index = [int(x) for x in cfg.get("filament_self_index") or range(1, n + 1)]
+    for kind, slot, pname in active:
+        pc = embedded.get((kind, pname))
+        if pc is None:
+            continue
+        if slot < len(ig) and ig[slot] != pc.get("inherits"):
+            rep.errors.append(f"inherits_group[{slot}] is '{ig[slot]}' but embedded preset '{pname}' inherits "
+                              f"'{pc.get('inherits')}'")
+        # the project's values must equal the preset's, or it opens as "modified"
+        for key, val in pc.items():
+            if key in ("from", "name", "version", "inherits") or key in _EMBED_ID.values() or key not in cfg:
+                continue
+            cur = cfg[key]
+            if kind == "filament" and isinstance(cur, list):
+                if len(cur) == len(self_index) and len(self_index) != n:
+                    cur = [v for v, f in zip(cur, self_index) if f == slot]
+                elif len(cur) == n:
+                    cur = [cur[slot - 1]]
+            if cur != val and not (isinstance(val, list) and len(val) == 1 and cur == val * len(cur)):
+                rep.warnings.append(f"active preset '{pname}': {key} is {cur!r} in the project but {val!r} in the "
+                                    "embedded preset (Bambu Studio will show it as modified)")

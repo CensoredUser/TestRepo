@@ -263,6 +263,9 @@ class SettingsBuilder:
             bed = lib.raw(model).get("default_bed_type")
         self.project["curr_bed_type"] = bed or "Textured PEI Plate"
         self.warnings: List[str] = []
+        # custom names -> these presets are embedded in the project (None = use the base preset)
+        self.process_name: Optional[str] = None
+        self.filament_names: List[Optional[str]] = [None] * len(self.filaments)
 
     # -- helpers ------------------------------------------------------------
     def _default_app_version(self) -> str:
@@ -363,6 +366,62 @@ class SettingsBuilder:
             return self.cfg["filament"][filament][key]
         return self.project.get(key)
 
+    # -- embedded (project) presets --------------------------------------------
+    def name_presets(self, process: Optional[str] = None,
+                     filaments: Optional[Sequence[Optional[str]]] = None) -> None:
+        """Give the process / filament presets their own names.
+
+        Named presets are written into the 3MF as project-embedded presets
+        (``Metadata/process_settings_N.config`` ...) that inherit from the
+        system preset; Bambu Studio lists them in its preset dropdowns and
+        selects them when the project is opened.
+        """
+        taken = set(self.lib.presets)
+        if process:
+            if process in taken:
+                raise SettingsError(f"preset name '{process}' already exists; choose another profile name")
+            self.process_name = process
+        for i, name in enumerate(filaments or []):
+            if name:
+                if not 0 <= i < self.filament_count:
+                    raise SettingsError(f"filament index {i + 1} out of range")
+                if name in taken:
+                    raise SettingsError(f"preset name '{name}' already exists; choose another profile name")
+                self.filament_names[i] = name
+
+    def _parent(self, name: str) -> str:
+        anc = self.lib.system_ancestor(name)
+        if not anc:
+            raise SettingsError(f"'{name}' does not derive from a system preset and cannot be embedded")
+        return anc
+
+    def embedded_presets(self) -> List[Dict[str, Any]]:
+        """Project-embedded presets as Bambu Studio saves them
+        (PresetCollection::get_preset_differed_for_save): changed keys only,
+        plus ``inherits``, the preset id key and the extruder variant keys."""
+        out: List[Dict[str, Any]] = []
+        d = self.diffs()
+
+        def make(kind, name, parent, cfg, keys, id_key, id_val, variant_keys):
+            body: Dict[str, Any] = {"from": "project", "name": name, "version": self.app_version,
+                                    "inherits": parent, id_key: id_val}
+            for k in list(keys) + [k for k in variant_keys if k in cfg]:
+                body[k] = deepcopy(cfg[k])
+            return {"type": kind, "name": name, "config": body}
+
+        if self.process_name:
+            out.append(make("process", self.process_name, self._parent(self.process), self.cfg["process"],
+                            d["process"], "print_settings_id", self.process_name,
+                            ("print_extruder_id", "print_extruder_variant")))
+        seen = set()
+        for i, name in enumerate(self.filament_names):
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append(make("filament", name, self._parent(self.filaments[i]), self.cfg["filament"][i],
+                            d["filament"][i], "filament_settings_id", [name], ("filament_extruder_variant",)))
+        return out
+
     # -- diffs ----------------------------------------------------------------
     @staticmethod
     def _diff(cfg: dict, base: dict) -> List[str]:
@@ -377,7 +436,9 @@ class SettingsBuilder:
             "machine": self._diff(self.cfg["machine"], self.base["machine"]),
         }
 
-    def _inherits(self, name: str) -> str:
+    def _inherits(self, name: str, embedded: bool = False) -> str:
+        if embedded:
+            return self._parent(name)
         info = self.lib.info(name)
         if info.source == "system":
             return ""
@@ -473,9 +534,9 @@ class SettingsBuilder:
             if k in out and _is_num(str(out[k])):
                 out[k] = str(max(0, min(int(float(out[k])), n)))
 
-        out["print_settings_id"] = self.process
+        out["print_settings_id"] = self.process_name or self.process
         out["printer_settings_id"] = self.machine
-        out["filament_settings_id"] = list(self.filaments)
+        out["filament_settings_id"] = [n or f for n, f in zip(self.filament_names, self.filaments)]
         out["filament_ids"] = [self.lib.meta_value(f, "filament_id") or "" for f in self.filaments]
 
         def add_if_some(key: str, values: List[str]) -> None:
@@ -488,8 +549,9 @@ class SettingsBuilder:
                     + [f.get("compatible_printers_condition", "") for f in fcfgs] + [""])
         add_if_some("compatible_process_expression_group",
                     [f.get("compatible_prints_condition", "") for f in fcfgs])
-        add_if_some("inherits_group", [self._inherits(self.process)]
-                    + [self._inherits(f) for f in self.filaments] + [self._inherits(self.machine)])
+        add_if_some("inherits_group", [self._inherits(self.process, bool(self.process_name))]
+                    + [self._inherits(f, bool(n)) for f, n in zip(self.filaments, self.filament_names)]
+                    + [self._inherits(self.machine)])
         d = self.diffs()
         add_if_some("different_settings_to_system",
                     [escape_strings_cstyle(d["process"])]
@@ -514,8 +576,9 @@ class SettingsBuilder:
         d = self.diffs()
         return {
             "printer": self.machine,
-            "process": self.process,
-            "filaments": self.filaments,
+            "process": self.process_name or self.process,
+            "filaments": [n or f for n, f in zip(self.filament_names, self.filaments)],
+            "base_presets": {"process": self.process, "filaments": self.filaments},
             "colours": self.colours,
             "bed_type": self.project.get("curr_bed_type"),
             "app_version": self.app_version,

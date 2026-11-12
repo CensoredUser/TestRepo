@@ -19,15 +19,22 @@ Everything goes through `python -m bambu3mf` in this repository. Read
    `presets --printer <P> --type filament --filter <material>`.
 4. Look up any key you aren't sure about: `search "<words>" --printer <P>`
    (shows type, allowed values, range and the current value).
-5. Write the spec (JSON) next to the model files and run
+5. Give the print its own profile (`"profile": "<print name>"`) and, unless
+   the user wants a single material, `variants` for the plausible materials
+   (PLA + PETG; ASA/ABS for heat/outdoor if the printer has presets). Shared
+   tuning goes in top-level `settings`, material tuning in each variant
+   (docs/TUNING.md, "Material variants").
+6. Write the spec (JSON) next to the model files and run
    `build spec.json -o <name>.3mf --dry-run`, then without `--dry-run`.
-6. Require `"validation": {"ok": true}`. Fix errors and address warnings.
-7. Report: presets used, each changed setting with a one-line reason, and
+7. Require `"validation": {"ok": true}`. Fix errors and address warnings.
+8. Report: the embedded profiles/variants and how to switch (filament **and**
+   process dropdown to the same "<print> - <material>" name), presets used, each changed setting with a one-line reason, and
    anything the user should check in Bambu Studio (supports, orientation).
 
 ## Modifying an existing project
 `inspect file.3mf --values` → `edit file.3mf -o new.3mf --set key=value`
-(add `--filament N` for one filament, `--object NAME` for per-object) →
+(add `--filament N` for one filament, `--object NAME` for per-object,
+`--preset "<embedded name>"` for one variant, `--all-variants` for all) →
 `validate new.3mf`.
 
 ## Saving a reusable profile

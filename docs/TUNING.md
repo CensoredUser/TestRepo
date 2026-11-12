@@ -74,6 +74,22 @@ object`, per plate in the spec), `spiral_mode` (vase), `fuzzy_skin`
 `fuzzy_skin_point_distance`, `adaptive_layer_height`, `timelapse_type`
 (`0` = instant, `1` = smooth).
 
+## Material variants
+Bambu's filament presets already carry each material's temperatures, cooling,
+flow, volumetric limit and plate temperatures. A variant only needs what
+*this print* needs on top of that. Typical differences:
+
+| Material | Process (variant `process_settings`) | Filament (variant `filament_settings`) |
+|---|---|---|
+| PLA | baseline | usually nothing |
+| PETG | `outer_wall_speed` a bit lower for gloss/accuracy; avoid ironing | `fan_max_speed` 40–60, `overhang_fan_speed` 70–90; Textured PEI (PETG sticks too well to smooth PEI) |
+| ABS / ASA | `brim_type: outer_only` (+ `brim_width`) for large or tall parts; fewer sharp corners | low cooling: `fan_max_speed` 20–40; best with an enclosure (Bambu ships no ABS/ASA presets for the A1 mini; open-frame A1 and P1P have them) |
+| TPU | slow: lower `outer_wall_speed`/`inner_wall_speed`, `enable_support: false` where possible | keep Bambu's `filament_max_volumetric_speed`; little retraction |
+| CF / GF filled | hardened nozzle required; `wall_loops` over infill for stiffness | Bambu presets are already tuned |
+
+Geometry-driven settings (walls, infill, supports, seam) go in the top-level
+`settings` so every variant shares them.
+
 ## Rules of thumb
 * Strength: more walls before more infill. Orient so layer lines don't carry
   the main load.

@@ -454,6 +454,12 @@ class ProfileLibrary:
         exact_base = [n for n in cands if n.split(" @")[0].lower() == q]
         if exact_base:
             return sorted(exact_base, key=len)[0]
+        if typ == "filament" and " " not in q:
+            # a bare material ("PETG", "ABS"): prefer Bambu's own, then generic
+            for pattern in (f"bambu {q} basic", f"bambu {q}", f"bambu {q} hf", f"generic {q}"):
+                hit = [n for n in cands if n.split(" @")[0].lower() == pattern]
+                if hit:
+                    return sorted(hit, key=len)[0]
         starts = [n for n in cands if n.lower().startswith(q)]
         if typ == "process" and re.fullmatch(r"\d+(\.\d+)?(mm)?", q):
             pref = [n for n in starts if "Standard" in n] or starts

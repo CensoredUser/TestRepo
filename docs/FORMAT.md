@@ -14,6 +14,9 @@ _rels/.rels                         -> /3D/3dmodel.model + plate_1.png thumbnail
 Metadata/project_settings.config    JSON: the complete flattened config
 Metadata/model_settings.config      XML: object/part names, per-object settings, plates
 Metadata/layer_config_ranges.xml    height-range modifiers (1-based object index)
+Metadata/process_settings_<n>.config  project-embedded presets (JSON diff + inherits)
+Metadata/filament_settings_<n>.config
+Metadata/machine_settings_<n>.config
 Metadata/slice_info.config          client type/version header
 Metadata/plate_<n>.png, plate_<n>_small.png
 ```
@@ -60,3 +63,13 @@ Metadata/plate_<n>.png, plate_<n>_small.png
   recomputes it when colours change. The colour formula is a port of
   `FlushVolCalc.cpp`; the minimum is the nozzle volume minus the volume
   pulled back by the long retraction on filament cut.
+* **Project-embedded presets** (`Metadata/process_settings_<n>.config`, …) are
+  JSON like `get_preset_differed_for_save()` writes them: `from: "project"`,
+  `name`, `version`, `inherits` (an installed preset; embedded presets whose
+  parent is missing are skipped), the id key (`print_settings_id` /
+  `filament_settings_id: [name]`), the extruder-variant keys and the changed
+  keys only. They are loaded *before* the project config, so pointing
+  `print_settings_id` / `filament_settings_id` at an embedded name (with
+  `inherits_group` = its parent and the diff keys listed) makes Bambu Studio
+  select it unmodified. An embedded name that matches an existing preset is not
+  loaded ("Preset already present").
