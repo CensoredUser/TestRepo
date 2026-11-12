@@ -5,3 +5,4 @@ build/
 dist/
 *.3mf.tmp
 /out/
+dist/

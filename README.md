@@ -105,6 +105,29 @@ project, builder = build_project(spec, lib)
 write_3mf(project, "out.3mf")
 ```
 
+## Using it in claude.ai chats
+
+The tool can be packaged as a claude.ai **skill**. Claude then runs it in the
+chat's code sandbox whenever you ask for a print; no network access is needed.
+
+1. Build the skill (bundles the tool, Bambu's profiles and your printer setup):
+   ```bash
+   python tools/build_claude_skill.py --ref v02.04.00.70 \
+       --printer P1S --nozzle 0.4 --plate "Textured PEI Plate" \
+       --filaments "AMS 1: Bambu PLA Basic white, 2: Bambu PETG HF black" --studio-version 02.04.00.70
+   ```
+   This writes `dist/bambu-print.zip` (~4–5 MB). `--ref` should be your Bambu
+   Studio version's git tag; without it, the profiles already on this machine are bundled.
+2. In claude.ai, turn on code execution ("Create and edit files" under
+   Settings > Capabilities; on Team/Enterprise plans an owner enables it).
+3. Customize > Skills > **+** > Create skill > **Upload a skill**, choose
+   `bambu-print.zip`, and make sure the skill is switched on.
+4. In any chat, attach your STL/3MF and ask, e.g. *"Print this bracket strong,
+   PLA and PETG versions."* Claude builds, validates and hands you the `.3mf`.
+
+Rebuild and re-upload the zip after updating the tool, your setup or your
+Bambu Studio version.
+
 ## Opening the result
 
 Open the `.3mf` in Bambu Studio (File > Open Project). The process and

@@ -57,3 +57,7 @@ variant), `edit --all-variants --set …` (every variant) or
 - Tests: `python -m unittest discover -s tests` (offline fixtures in
   `tests/fixtures/profiles`; real-profile tests run when profiles are present).
 - Format facts and Bambu Studio source references: `docs/FORMAT.md`.
+- claude.ai skill: template `skill/SKILL.md.in` + `skill/run.py`, packaged by
+  `tools/build_claude_skill.py` into `dist/bambu-print.zip` (bundles
+  `profiles.zip`, which the tool unpacks into a writable cache). Keep the
+  template's description under 200 characters and in step with this file.

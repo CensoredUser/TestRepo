@@ -1,0 +1,73 @@
+---
+name: bambu-print
+description: Make or tune Bambu Studio print files (.3mf) and profiles for Bambu Lab printers: tuned settings, embedded profiles, PLA/PETG/... variants. Use for any 3D print request.
+---
+
+# Bambu print projects (bambu3mf)
+
+This skill writes Bambu Studio project files (.3mf) that open in Bambu Studio
+with the print's own tuned profiles already selected. It runs offline: the tool
+(pure Python 3.9+, no installs) and Bambu Lab's official system profiles
+({{PROFILE_INFO}}) are bundled in this folder.
+
+## Running it
+`SKILL_DIR` is the folder containing this SKILL.md. Every command:
+
+```bash
+python3 "$SKILL_DIR/run.py" <command> [options]
+```
+
+Work in a writable folder (e.g. `mkdir -p /tmp/work && cd /tmp/work`). Files
+the user uploaded are usually in `/mnt/user-data/uploads/`. Save finished
+`.3mf`/`.json` files to `/mnt/user-data/outputs/` (if that folder exists) so
+the user can download them.
+
+Commands: `printers`, `presets --printer P [--type process|filament] [--filter TEXT]`,
+`search "<words>" --printer P` (setting keys, allowed values, current value),
+`show "<preset>" --keys k1,k2`, `build spec.json -o out.3mf [--dry-run]`,
+`inspect file.3mf [--values]`, `edit file.3mf -o new.3mf --set k=v [--filament N | --object NAME | --preset "<name>" | --all-variants]`,
+`validate file.3mf`, `extract-presets file.3mf -o dir`, `export-preset ...`, `mesh file.stl`.
+
+## Owner's setup
+{{SETUP}}
+
+## Workflow
+1. Clarify only what changes the result: printer and nozzle (if not set above),
+   material(s), and the goal (strength, looks, speed, fit, heat or outdoor use).
+   Pick sensible defaults for the rest and say so.
+2. Check the model: `mesh <file>` (size, triangle count, inside-out). Choose
+   the orientation (`rotate`): flat face down, strength along the layers,
+   fewest supports.
+3. Choose presets: the process by layer height for the goal (0.12–0.16 for
+   detail, 0.20 standard, 0.24–0.28 drafts); filaments with
+   `presets --printer P --type filament --filter <material>`. Use `search` for
+   any key you aren't sure about, and read `references/TUNING.md`.
+4. Write the spec (`references/SPEC.md`, examples in `examples/`):
+   - `"profile": "<print name>"`: the file embeds its own named profiles.
+   - Unless the user wants a single material, add `variants` for plausible
+     materials (PLA + PETG; ASA/ABS for heat or outdoor use when the printer
+     has presets). Shared tuning goes in top-level `settings`, material tuning
+     in each variant.
+5. `build spec.json -o /tmp/work/<name>.3mf --dry-run`, check it, then build
+   for real. The output must contain `"validation": {"ok": true}`. Fix errors
+   and address warnings.
+6. Copy the .3mf to the outputs folder. Tell the user:
+   - the embedded profiles and variants, and how to switch: select
+     "<print> - PETG" in the filament slot **and** the process dropdown;
+   - each changed setting with a one-line reason;
+   - what to check in Bambu Studio (orientation, supports).
+
+To modify an uploaded project: `inspect` → `edit` → `validate`.
+
+## Rules
+- Never edit a 3MF's internal files by hand; always use `build`/`edit`.
+  Bambu Studio silently reverts overrides that aren't recorded properly, and
+  the tool handles that bookkeeping.
+- Change as few settings as possible; prefer picking the right preset over
+  overriding many keys.
+- Don't touch printer or filament G-code unless asked.
+- Per-object, modifier and height-range overrides take process settings only.
+- Positions are bed coordinates of the footprint centre; omit `position` to
+  auto-arrange.
+- The tool doesn't slice. Never state print times or filament use; Bambu
+  Studio computes those.

@@ -122,14 +122,62 @@ def normalize_version(ver: str) -> str:
 # Locating / fetching profile sets
 # ---------------------------------------------------------------------------
 
+# A profile bundle shipped next to the package (used by the claude.ai skill).
+BUNDLED_PROFILES = Path(__file__).resolve().parent.parent / "profiles.zip"
+
+
+def _writable_dir(*cands: Path) -> Path:
+    for c in cands:
+        try:
+            c.mkdir(parents=True, exist_ok=True)
+            probe = c / ".write-test"
+            probe.write_text("")
+            probe.unlink()
+            return c
+        except OSError:
+            continue
+    raise ProfileError("no writable directory to unpack the profile bundle")
+
+
+def unpack_profile_bundle(bundle: Path) -> Path:
+    """Unpack a profiles.zip (BBL.json, BBL/, schema.json, meta.json) once, into
+    a writable cache/temp folder keyed by the bundle's content."""
+    import hashlib
+    import zipfile
+    h = hashlib.sha1()
+    with open(bundle, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    key = h.hexdigest()[:16]
+    base = _writable_dir(cache_dir() / "bundles", Path(tempfile.gettempdir()) / "bambu3mf-bundles")
+    dest = base / key
+    if (dest / f"{VENDOR}.json").is_file():
+        return dest
+    tmp = Path(tempfile.mkdtemp(prefix="unpack-", dir=base))
+    with zipfile.ZipFile(bundle) as z:
+        for info in z.infolist():
+            name = info.filename.replace("\\", "/")
+            if name.startswith("/") or ".." in Path(name).parts:
+                raise ProfileError(f"unsafe path in profile bundle: {name}")
+        z.extractall(tmp)
+    try:
+        tmp.rename(dest)
+    except OSError:          # another process won the race
+        shutil.rmtree(tmp, ignore_errors=True)
+    return dest
+
+
 def find_profile_root(explicit: Optional[str] = None) -> Path:
-    """Return a directory containing BBL.json and BBL/."""
+    """Return a directory containing BBL.json and BBL/ (a profiles.zip bundle is unpacked)."""
     cands: List[Path] = []
     if explicit:
         cands.append(Path(explicit).expanduser())
     env = os.environ.get("BAMBU3MF_PROFILES")
     if env:
         cands.append(Path(env).expanduser())
+    if not explicit and not env and BUNDLED_PROFILES.is_file():
+        cands.append(BUNDLED_PROFILES)
+    cands = [unpack_profile_bundle(c) if c.is_file() and c.suffix.lower() == ".zip" else c for c in cands]
     if not explicit and not env:
         # Prefer the installed Bambu Studio (matches the user's version), then the cache.
         cands += [d / "system" for d in bambu_data_dirs()]
@@ -147,7 +195,7 @@ def find_profile_root(explicit: Optional[str] = None) -> Path:
                 return c / sub
     raise ProfileError(
         "No Bambu Studio profiles found. Run `bambu3mf profiles fetch` (downloads the "
-        "official BBL profiles), install Bambu Studio, or pass --profiles DIR.")
+        "official BBL profiles), install Bambu Studio, or pass --profiles DIR|profiles.zip.")
 
 
 def fetch_profiles(ref: str = "master", dest: Optional[Path] = None, log=print) -> Path:

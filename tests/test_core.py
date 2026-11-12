@@ -84,6 +84,32 @@ class ProfileTests(unittest.TestCase):
             self.assertEqual(cfg["different_settings_to_system"][0], "wall_loops")
 
 
+class BundleTests(unittest.TestCase):
+    def test_profiles_zip_bundle(self):
+        import os
+        from bambu3mf.profiles import find_profile_root
+        with tempfile.TemporaryDirectory() as d:
+            bundle = Path(d) / "profiles.zip"
+            with zipfile.ZipFile(bundle, "w") as z:
+                for f in FIXTURES.rglob("*"):
+                    if f.is_file():
+                        z.write(f, str(f.relative_to(FIXTURES)))
+            old = os.environ.get("BAMBU3MF_CACHE")
+            os.environ["BAMBU3MF_CACHE"] = str(Path(d) / "cache")
+            try:
+                root = find_profile_root(str(bundle))
+                self.assertTrue((root / "BBL.json").is_file())
+                self.assertEqual(find_profile_root(str(bundle)), root)        # unpacked once
+                L = ProfileLibrary(root)
+                self.assertEqual(L.machine_preset("Test Printer"), "Test Printer 0.4 nozzle")
+                self.assertTrue(L.schema)
+            finally:
+                if old is None:
+                    del os.environ["BAMBU3MF_CACHE"]
+                else:
+                    os.environ["BAMBU3MF_CACHE"] = old
+
+
 class SettingsTests(unittest.TestCase):
     def test_value_conversion(self):
         L = lib()
