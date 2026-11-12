@@ -1,0 +1,39 @@
+{
+    "type": "machine",
+    "name": "fdm_machine_common",
+    "from": "system",
+    "instantiation": "false",
+    "printable_area": [
+        "0x0",
+        "200x0",
+        "200x180",
+        "0x180"
+    ],
+    "printable_height": "150",
+    "nozzle_diameter": [
+        "0.4"
+    ],
+    "printer_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "extruder_variant_list": [
+        "Direct Drive Standard,Direct Drive High Flow"
+    ],
+    "retraction_length": [
+        "0.8",
+        "0.8"
+    ],
+    "nozzle_volume": [
+        "100",
+        "100"
+    ],
+    "enable_long_retraction_when_cut": "0",
+    "bed_exclude_area": [
+        "0x0",
+        "10x0",
+        "10x10",
+        "0x10"
+    ],
+    "machine_start_gcode": "G28 ; common"
+}

@@ -1,0 +1,20 @@
+{
+    "type": "process",
+    "name": "fdm_process_common",
+    "from": "system",
+    "instantiation": "false",
+    "layer_height": "0.2",
+    "wall_loops": "2",
+    "sparse_infill_density": "15%",
+    "sparse_infill_pattern": "grid",
+    "inner_wall_speed": [
+        "100",
+        "120"
+    ],
+    "print_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "support_filament": "0",
+    "seam_position": "aligned"
+}

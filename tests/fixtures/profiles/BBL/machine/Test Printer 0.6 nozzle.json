@@ -1,0 +1,12 @@
+{
+    "type": "machine",
+    "name": "Test Printer 0.6 nozzle",
+    "inherits": "Test Printer 0.4 nozzle",
+    "from": "system",
+    "instantiation": "true",
+    "printer_variant": "0.6",
+    "nozzle_diameter": [
+        "0.6"
+    ],
+    "default_print_profile": "0.30mm Standard @Test 0.6"
+}

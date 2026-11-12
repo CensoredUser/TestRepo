@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bambu3mf"
+version = "0.1.0"
+description = "Generate Bambu Studio compatible 3MF projects and print presets from the official Bambu Lab profiles"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.scripts]
+bambu3mf = "bambu3mf.cli:main"
+
+[tool.setuptools]
+packages = ["bambu3mf"]

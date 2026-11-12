@@ -1,0 +1,68 @@
+{
+    "name": "Bambulab",
+    "version": "02.01.00.00",
+    "machine_model_list": [
+        {
+            "name": "Test Printer",
+            "sub_path": "machine/Test Printer.json"
+        }
+    ],
+    "machine_list": [
+        {
+            "name": "fdm_machine_common",
+            "sub_path": "machine/fdm_machine_common.json"
+        },
+        {
+            "name": "Test gcode template",
+            "sub_path": "machine/Test gcode template.json"
+        },
+        {
+            "name": "Test Printer 0.4 nozzle",
+            "sub_path": "machine/Test Printer 0.4 nozzle.json"
+        },
+        {
+            "name": "Test Printer 0.6 nozzle",
+            "sub_path": "machine/Test Printer 0.6 nozzle.json"
+        }
+    ],
+    "process_list": [
+        {
+            "name": "fdm_process_common",
+            "sub_path": "process/fdm_process_common.json"
+        },
+        {
+            "name": "0.20mm Standard @Test",
+            "sub_path": "process/0.20mm Standard @Test.json"
+        },
+        {
+            "name": "0.12mm Fine @Test",
+            "sub_path": "process/0.12mm Fine @Test.json"
+        },
+        {
+            "name": "0.30mm Standard @Test 0.6",
+            "sub_path": "process/0.30mm Standard @Test 0.6.json"
+        }
+    ],
+    "filament_list": [
+        {
+            "name": "fdm_filament_common",
+            "sub_path": "filament/fdm_filament_common.json"
+        },
+        {
+            "name": "Test PLA @base",
+            "sub_path": "filament/Test PLA @base.json"
+        },
+        {
+            "name": "Test PLA @Test",
+            "sub_path": "filament/Test PLA @Test.json"
+        },
+        {
+            "name": "Test PETG @Test",
+            "sub_path": "filament/Test PETG @Test.json"
+        },
+        {
+            "name": "Test PLA @Test 0.6",
+            "sub_path": "filament/Test PLA @Test 0.6.json"
+        }
+    ]
+}

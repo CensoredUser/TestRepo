@@ -1,0 +1,19 @@
+{
+    "type": "filament",
+    "name": "Test PLA @Test",
+    "inherits": "Test PLA @base",
+    "from": "system",
+    "setting_id": "TF001",
+    "instantiation": "true",
+    "nozzle_temperature": [
+        "210",
+        "215"
+    ],
+    "filament_retraction_length": [
+        "nil",
+        "0.5"
+    ],
+    "compatible_printers": [
+        "Test Printer 0.4 nozzle"
+    ]
+}

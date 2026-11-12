@@ -1,0 +1,38 @@
+{
+    "type": "filament",
+    "name": "fdm_filament_common",
+    "from": "system",
+    "instantiation": "false",
+    "filament_type": [
+        "PLA"
+    ],
+    "filament_diameter": [
+        "1.75"
+    ],
+    "nozzle_temperature": [
+        "200",
+        "200"
+    ],
+    "default_filament_colour": [
+        ""
+    ],
+    "filament_extruder_variant": [
+        "Direct Drive Standard",
+        "Direct Drive High Flow"
+    ],
+    "filament_retraction_length": [
+        "nil",
+        "nil"
+    ],
+    "filament_long_retractions_when_cut": [
+        "nil",
+        "nil"
+    ],
+    "filament_retraction_distances_when_cut": [
+        "nil",
+        "nil"
+    ],
+    "filament_start_gcode": [
+        "; start"
+    ]
+}

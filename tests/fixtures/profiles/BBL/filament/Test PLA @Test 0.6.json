@@ -1,0 +1,10 @@
+{
+    "type": "filament",
+    "name": "Test PLA @Test 0.6",
+    "inherits": "Test PLA @base",
+    "from": "system",
+    "instantiation": "true",
+    "compatible_printers": [
+        "Test Printer 0.6 nozzle"
+    ]
+}

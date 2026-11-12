@@ -1,0 +1,21 @@
+{
+    "type": "machine",
+    "name": "Test Printer 0.4 nozzle",
+    "inherits": "fdm_machine_common",
+    "from": "system",
+    "setting_id": "TM001",
+    "instantiation": "true",
+    "printer_model": "Test Printer",
+    "printer_variant": "0.4",
+    "default_print_profile": "0.20mm Standard @Test",
+    "default_filament_profile": [
+        "Test PLA @Test"
+    ],
+    "include": [
+        "Test gcode template"
+    ],
+    "retraction_length": [
+        "0.6",
+        "0.7"
+    ]
+}

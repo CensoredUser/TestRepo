@@ -1,0 +1,22 @@
+{
+    "type": "filament",
+    "name": "Test PETG @Test",
+    "inherits": "fdm_filament_common",
+    "from": "system",
+    "filament_id": "TST02",
+    "instantiation": "true",
+    "filament_type": [
+        "PETG"
+    ],
+    "nozzle_temperature": [
+        "240",
+        "245"
+    ],
+    "default_filament_colour": [
+        "#00AA00"
+    ],
+    "compatible_printers": [
+        "Test Printer 0.4 nozzle",
+        "Test Printer 0.6 nozzle"
+    ]
+}

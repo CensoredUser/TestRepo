@@ -1,0 +1,31 @@
+{
+  "comment": "Two filaments, two plates: PETG brackets (by-object sequence) and PLA test pieces.",
+  "printer": "P1S",
+  "nozzle": 0.4,
+  "filaments": [
+    {"preset": "Bambu PLA Basic", "color": "#FFFFFF"},
+    {"preset": "Bambu PETG HF", "color": "#222222", "settings": {"nozzle_temperature": 245}}
+  ],
+  "settings": {"wall_loops": 3, "enable_support": false},
+  "plates": [
+    {
+      "name": "PETG brackets",
+      "print_sequence": "by object",
+      "objects": [
+        {"name": "bracket", "mesh": {"box": [40, 15, 25]}, "filament": 2, "copies": 4,
+         "settings": {"sparse_infill_density": "40%"}}
+      ]
+    },
+    {
+      "name": "PLA pieces",
+      "objects": [
+        {"name": "pin", "mesh": {"cylinder": {"radius": 4, "height": 30}}, "copies": 6},
+        {"name": "two-tone tile",
+         "parts": [
+           {"name": "base", "mesh": {"box": [30, 30, 2]}, "filament": 1},
+           {"name": "inlay", "mesh": {"box": [20, 20, 1]}, "offset": [5, 5, 2], "filament": 2}
+         ]}
+      ]
+    }
+  ]
+}

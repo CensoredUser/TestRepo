@@ -1,0 +1,8 @@
+{
+    "type": "filament",
+    "name": "Test PLA @base",
+    "inherits": "fdm_filament_common",
+    "from": "system",
+    "filament_id": "TST01",
+    "instantiation": "false"
+}
